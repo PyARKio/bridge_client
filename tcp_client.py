@@ -59,7 +59,7 @@ def _init_client(f_object=None):
 
 
 @_init_client
-def search_ip(host=None, port=None, _socket=None):
+def check_host(host=None, port=None, _socket=None):
     log.info('Connecting to {}:{}:{} ...'.format(host, port, _socket))
     try:
         _socket.connect((host, port))
@@ -72,20 +72,56 @@ def search_ip(host=None, port=None, _socket=None):
 
 
 def _server_identification(host, _socket):
+    log.info('')
     try:
         data = _socket.recv(1024).decode()
     except Exception as err:
         log.info('HOST: {} ERROR: {}'.format(host, err))
         CommonQueue.SCQ.put(False)
     else:
+        log.info('response from server: {}'.format(data))
         if data == 'check\r\n':
+            log.info('send to server: {}'.format(bytes('check ok', encoding='UTF-8')))
             _socket.send(bytes('check ok', encoding='UTF-8'))
             CommonQueue.SCQ.put(_socket)
         else:
             CommonQueue.SCQ.put(False)
 
 
-search_ip('10.8.0.5', 777)
+# check_host('10.8.0.5', 777)
 
+
+def auto_search_host(pre_host, port):
+    point = time.time()
+    _socket = False
+    for f in range(0, 256, 4):
+        for i in range(f, f + 4):
+            host = '{}.{}'.format(pre_host, i)
+            # host = '192.168.1.{}'.format(i)
+            assistant_start = threading.Thread(target=check_host, args=(host, port, ))
+            assistant_start.start()
+
+        index = 0
+        while index < 4:
+            if not _socket:
+                _socket = CommonQueue.SCQ.get()
+            else:
+                CommonQueue.SCQ.get()
+            index += 1
+
+        if _socket:
+            log.info('BREAK')
+            break
+
+        log.info(time.time() - point)
+        log.info(_socket)
+    for i in range(5):
+        log.info('send to server: {}'.format(bytes('BREAK :)', encoding='UTF-8')))
+        _socket.send(bytes('BREAK :)', encoding='UTF-8'))
+        sleep(5)
+    _socket = None
+
+
+auto_search_host('10.8.0', 777)
 
 
