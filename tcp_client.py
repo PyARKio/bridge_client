@@ -46,6 +46,7 @@ class Client(threading.Thread):
             # _socket.connect(('10.8.0.5', 777))
             while self._socket:
                 log.info('\n\nREAD\n\n')
+                self._socket.setblocking(True)
                 try:
                     data = self._socket.recv(10000)
                 except Exception as err:
