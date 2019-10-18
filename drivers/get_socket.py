@@ -68,8 +68,8 @@ def _server_identification(host, _socket):
             _socket.send(bytes('check ok', encoding='UTF-8'))
             CommonQueue.SCQ.put(_socket)
             # data = _socket.recv(1024).decode()
-            while True:
-                sleep(10)
+            # while True:
+            #     sleep(10)
         else:
             CommonQueue.SCQ.put(False)
 

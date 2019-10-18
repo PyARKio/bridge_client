@@ -54,10 +54,11 @@ class Client(threading.Thread):
                     # self._socket = None
                 else:
                     self.data_callback(data.decode('cp1251'))
+                    self._socket.setblocking(False)
 
                 # for i in range(5):
-                # log.info('send to server: {}'.format(bytes('BREAK :)', encoding='UTF-8')))
-                # self._socket.send(bytes('BREAK :)', encoding='UTF-8'))
+                log.info('send to server: {}'.format(bytes('BREAK :)', encoding='UTF-8')))
+                self._socket.send(bytes('BREAK :)', encoding='UTF-8'))
                 #     sleep(5)
 
                 # data = _socket.recv(10000)
@@ -85,7 +86,7 @@ def callback_system(response):
     log.info(response)
 
 
-_client = Client(host='10.8.0.5', port=777, auto=False, data_callback=callback_data, system_callback=callback_system)
+_client = Client(host='10.8.0', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
 _client.start()
 
 
