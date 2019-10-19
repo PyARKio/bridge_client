@@ -21,8 +21,7 @@ class CommonQueue:
 
 class Client(threading.Thread):
     def __init__(self, host=None, port=None, auto=False, data_callback=None, system_callback=None):
-        threading.Thread.__init__(self)
-
+        log.info('client running...')
         self.host = host
         self.port = port
         self.auto = auto
@@ -30,22 +29,30 @@ class Client(threading.Thread):
         self.system_callback = system_callback
         self.running = True
 
+        threading.Thread.__init__(self)
+
     def run(self):
         while self.running:
             _socket = False
+            log.info('host circle. _socket: {}'.format(_socket))
             while not _socket:
+                log.info('init search host')
                 _socket = get_socket.search_host(pre_host=self.host, port=self.port, auto=self.auto)
                 log.info(_socket)
                 self.system_callback(_socket)
 
             while _socket:
-                log.info('\n\nREAD\n\n')
+                _sender = Sender(sender_socket=_socket)
+                _sender.start()
+
+                log.info('\n\nREADY to read\n\n')
                 _socket.setblocking(True)
                 try:
                     data = _socket.recv(10000)
                 except Exception as err:
                     log.info('ERROR: {}'.format(err))
-                    # _socket = None
+                    _socket = False
+                    self.system_callback({'ERROR': '{}'.format(err)})
                 else:
                     self.data_callback(data.decode('cp1251'))
                     # _socket.setblocking(False)
@@ -58,16 +65,35 @@ class Client(threading.Thread):
 
 
 class Sender(threading.Thread):
-    def __init__(self, sender_socket=None):
-        threading.Thread.__init__(self)
+    def __init__(self, sender_socket=None, data_callback=None, system_callback=None):
+        log.info('start up')
         self.running = True
         self.sender_socket = sender_socket
+        self.data_callback = data_callback
+        self.system_callback = system_callback
+
+        threading.Thread.__init__(self)
 
     def run(self):
+        log.info('running...')
         while self.running:
+            response = Sender.__get_from_queue()
+            if response:
+                # check data type
+                self.sender_socket.send(bytes(response, encoding='UTF-8'))
+            else:
+                self.system_callback()
+
+
+    @staticmethod
+    def __get_from_queue():
+        try:
             data = CommonQueue.CQ.get()
-            # check data type
-            self.sender_socket.send(bytes(data, encoding='UTF-8'))
+        except Exception as err:
+            log.error(err)
+            return False
+
+        return data
 
 
 def callback_data(response):
