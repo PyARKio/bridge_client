@@ -2,7 +2,6 @@
 from __future__ import unicode_literals
 import threading
 import socket
-from time import sleep
 import time
 from multiprocessing import Queue
 from drivers.log_settings import log
@@ -14,8 +13,7 @@ __email__ = "fedoretss@gmail.com"
 __status__ = "Production"
 
 
-class CommonQueue:
-    CQ = Queue()
+class SystemQueue:
     SysCQ = Queue()
     SCQ = Queue()
 
@@ -31,7 +29,7 @@ def _init_client(f_object=None):
             _socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)  # , 'i')
         except Exception as err:
             log.error(err)
-            CommonQueue.SCQ.put(False)
+            SystemQueue.SCQ.put(False)
             return False
         else:
             _socket.setblocking(False)
@@ -48,7 +46,7 @@ def check_host(host=None, port=None, _socket=None):
         _socket.connect((host, port))
     except Exception as err:
         log.error('HOST: {} ERROR: {}'.format(host, err))
-        CommonQueue.SCQ.put(False)
+        SystemQueue.SCQ.put(False)
     else:
         log.info('Connect :) HOST: {}'.format(host))
         _server_identification(host, _socket)
@@ -60,23 +58,20 @@ def _server_identification(host, _socket):
         data = _socket.recv(1024).decode()
     except Exception as err:
         log.info('HOST: {} ERROR: {}'.format(host, err))
-        CommonQueue.SCQ.put(False)
+        SystemQueue.SCQ.put(False)
     else:
         log.info('response from server: {}'.format(data))
         if data == 'check\r\n':
             log.info('send to server: {}'.format(bytes('check ok', encoding='UTF-8')))
             _socket.send(bytes('check ok', encoding='UTF-8'))
-            CommonQueue.SCQ.put(_socket)
-            # data = _socket.recv(1024).decode()
-            # while True:
-            #     sleep(10)
+            SystemQueue.SCQ.put(_socket)
         else:
-            CommonQueue.SCQ.put(False)
+            SystemQueue.SCQ.put(False)
 
 
 # PRE_HOST: is not correct method !!!
 # @CHECK_args !!!
-def search_host(pre_host=None, port=None, _socket_connect=None, auto=False, word=[None, None]):
+def search_host(pre_host=None, port=None, auto=False):  # , word=[None, None]):
     _socket = False
 
     if auto:
@@ -91,9 +86,9 @@ def search_host(pre_host=None, port=None, _socket_connect=None, auto=False, word
             index = 0
             while index < 4:
                 if not _socket:
-                    _socket = CommonQueue.SCQ.get()
+                    _socket = SystemQueue.SCQ.get()
                 else:
-                    CommonQueue.SCQ.get()
+                    SystemQueue.SCQ.get()
                 index += 1
 
             if _socket:
@@ -101,19 +96,17 @@ def search_host(pre_host=None, port=None, _socket_connect=None, auto=False, word
                 log.info(time.time() - point)
                 log.info(_socket)
                 break
-
-        # for i in range(5):
-        #     log.info('send to server: {}'.format(bytes('BREAK :)', encoding='UTF-8')))
-        #     _socket.send(bytes('BREAK :)', encoding='UTF-8'))
-        #     sleep(5)
-        # data = _socket.recv(10000)
-        # _socket = None
     else:
         log.info('MANUAL MODE')
         check_host(pre_host, port)
-        _socket = CommonQueue.SCQ.get()
+        _socket = SystemQueue.SCQ.get()
 
     return _socket
 
 
-# search_host(pre_host='10.8.0', port=777, auto=True)
+if __name__ == '__main__':
+    search_host(pre_host='10.8.0', port=777, auto=True)
+
+
+
+

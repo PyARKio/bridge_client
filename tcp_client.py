@@ -5,7 +5,6 @@ from multiprocessing import Queue
 from drivers import get_socket
 from drivers.log_settings import log
 from time import sleep
-import socket
 
 
 __author__ = "PyARKio"
@@ -30,39 +29,32 @@ class Client(threading.Thread):
         self.data_callback = data_callback
         self.system_callback = system_callback
         self.running = True
-        # self._socket_connect = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        # self._socket_connect.setblocking(False)
-        # self._socket_connect.settimeout(1)
-        self._socket = False
 
     def run(self):
         while self.running:
-            # _socket = False
-            while not self._socket:
-                self._socket = get_socket.search_host(pre_host=self.host, port=self.port, auto=self.auto)  # , _socket_connect=self._socket_connect)
-                log.info(self._socket)
-                self.system_callback(self._socket)
+            _socket = False
+            while not _socket:
+                _socket = get_socket.search_host(pre_host=self.host, port=self.port, auto=self.auto)
+                log.info(_socket)
+                self.system_callback(_socket)
 
-            # _socket.connect(('10.8.0.5', 777))
-            while self._socket:
+            while _socket:
                 log.info('\n\nREAD\n\n')
-                self._socket.setblocking(True)
+                _socket.setblocking(True)
                 try:
-                    data = self._socket.recv(10000)
+                    data = _socket.recv(10000)
                 except Exception as err:
                     log.info('ERROR: {}'.format(err))
-                    # self._socket = None
+                    # _socket = None
                 else:
                     self.data_callback(data.decode('cp1251'))
-                    self._socket.setblocking(False)
+                    # _socket.setblocking(False)
 
                 # for i in range(5):
-                log.info('send to server: {}'.format(bytes('BREAK :)', encoding='UTF-8')))
-                self._socket.send(bytes('BREAK :)', encoding='UTF-8'))
+                # log.info('send to server: {}'.format(bytes('BREAK :)', encoding='UTF-8')))
+                # _socket.send(bytes('BREAK :)', encoding='UTF-8'))
                 #     sleep(5)
-
-                # data = _socket.recv(10000)
-                # self._socket = None
+                # _socket = None
 
 
 class Sender(threading.Thread):
@@ -86,11 +78,12 @@ def callback_system(response):
     log.info(response)
 
 
-_client = Client(host='10.8.0', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
-_client.start()
+if __name__ == '__main__':
+    # host='10.8.0'
+    _client = Client(host='192.168.1', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
+    _client.start()
 
-
-while True:
-    pass
+    while True:
+        sleep(10)
 
 
