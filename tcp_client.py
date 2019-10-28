@@ -5,10 +5,10 @@ from multiprocessing import Queue
 from drivers import get_socket
 from drivers.log_settings import log
 from time import sleep
-import sys
+import time
 import socket
 
-print(sys.version)
+# print(sys.version)
 
 
 __author__ = "PyARKio"
@@ -64,19 +64,24 @@ class Client(threading.Thread):
         return _sender
 
     def _get_data_from_server(self, _socket, _sender):
-        log.info('\n\nREADY to read\n\n')
+        # log.info('\n\nREADY to read\n\n')
         try:
             data = _socket.recv(1024).decode()
         except socket.timeout as err:
             pass
-            log.error('GOOD ERROR: {}'.format(err))
+            # log.error('GOOD ERROR: {}'.format(err))
         except Exception as err:
             _socket = False
             self._socket_error(err, _sender)
         else:
             if not data:
                 log.error('No data from {}'.format(data))
+                _socket = False
+                self._socket_error(err, _sender)
             else:
+                # ADD related to key data from )_sender !!!!
+                if _sender.walkie_talkie and data == 'READY TO NEXT':
+                    _sender.walkie_talkie = False
                 self.data_callback(data)  # .decode('cp1251')
         return _socket
 
@@ -93,6 +98,7 @@ class Sender(threading.Thread):
     def __init__(self, sender_socket=None, data_callback=None, system_callback=None):
         log.info('start up')
         self.running = True
+        self.walkie_talkie = False
         self.sender_socket = sender_socket
         self.data_callback = data_callback
         self.system_callback = system_callback
@@ -101,18 +107,33 @@ class Sender(threading.Thread):
 
     def run(self):
         log.info('SENDER running...')
+        _delta_on = 0
         while self.running:
             response = Sender.__get_from_queue()
             if response:
                 # check data type
+                log.info('SEND: {}'.format(response))
                 try:
                     self.sender_socket.send(bytes(response, encoding='UTF-8'))
                 except Exception as err:
                     log.error('SENDER: {}'.format(err))
                     # self.system_callback()
+                else:
+                    self.walkie_talkie = True
+                    _delta_on = time.time()
+                    log.info('WALKIE-TALKIE: {}, _delta_on: {}'.format(self.walkie_talkie, _delta_on))
             else:
                 log.info('SENDER: response = {}'.format(response))
                 # self.system_callback()
+
+            while self.walkie_talkie:
+                sleep(0.05)
+                if time.time() - _delta_on > 3:
+                    # CALLBACK to write in local db
+                    log.debug('TIMEOUT !!!!!!!!!!!!')
+                    log.debug(time.time() - _delta_on)
+                    self.walkie_talkie = False
+            log.info('NEXT @@@@@')
 
     @staticmethod
     def __get_from_queue():
@@ -135,13 +156,13 @@ def callback_system(response):
 
 
 if __name__ == '__main__':
-    _client = Client(host='10.8.0', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
+    _client = Client(host='192.168.0', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
     _client.start()
 
     while True:
         for i in range(500):
-            log.info('send to server: {}'.format(bytes('BREAK :)', encoding='UTF-8')))
-            CommonQueue.CQ.put('BREAK :)')
-            sleep(5)
+            log.info('send to server: {}'.format(bytes('BREAK :) NUMBER: {}'.format(i), encoding='UTF-8')))
+            CommonQueue.CQ.put('BREAK :) NUMBER: {}'.format(i))
+            sleep(2)
 
 
