@@ -212,11 +212,11 @@ def callback_system(response):
 
 
 if __name__ == '__main__':
-    _client = Client(host='192.168.0', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
+    _client = Client(host='10.8.0', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
     _client.start()
 
     while True:
-        sleep(15)
+        # sleep(15)
         for i in range(500):
             log.info('send to server: {}'.format(bytes('BREAK :) NUMBER: {}'.format(i), encoding='UTF-8')))
             CommonQueue.CQ.put('BREAK :) NUMBER: {}'.format(i), block=False)

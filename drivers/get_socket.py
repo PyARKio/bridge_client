@@ -77,7 +77,7 @@ def search_host(pre_host=None, port=None, auto=False):  # , word=[None, None]):
     if auto:
         log.info('AUTO MODE')
         point = time.time()
-        for f in range(100, 255, 4):
+        for f in range(0, 255, 4):
             for i in range(f, f + 4):
                 host = '{}.{}'.format(pre_host, i)
                 assistant_start = threading.Thread(target=check_host, args=(host, port, ))
