@@ -7,8 +7,7 @@ from drivers.log_settings import log
 from time import sleep
 import time
 import socket
-
-# print(sys.version)
+import pickle
 
 
 __author__ = "PyARKio"
@@ -55,21 +54,19 @@ class Client(threading.Thread):
 
         return _socket
 
-    @staticmethod
-    def _run_sender(_socket):
-        _sender = Sender(sender_socket=_socket)
+    def _run_sender(self, _socket):
+        _sender = Sender(sender_socket=_socket, system_callback=self.system_callback)
         _sender.start()
         _socket.settimeout(1)
-
         return _sender
 
     def _get_data_from_server(self, _socket, _sender):
-        # log.info('\n\nREADY to read\n\n')
         try:
             data = _socket.recv(1024).decode()
-        except socket.timeout as err:
-            pass
-            # log.error('GOOD ERROR: {}'.format(err))
+        except socket.timeout:
+            if not _sender.running:
+                _socket = False
+                log.info('_socket: {}'.format(_socket))
         except Exception as err:
             _socket = False
             self._socket_error(err, _sender)
@@ -77,28 +74,27 @@ class Client(threading.Thread):
             if not data:
                 log.error('No data from {}'.format(data))
                 _socket = False
-                self._socket_error(err, _sender)
+                self._socket_error('No data', _sender)
             else:
                 # ADD related to key data from )_sender !!!!
-                if _sender.walkie_talkie and data == 'READY TO NEXT':
-                    _sender.walkie_talkie = False
-                self.data_callback(data)  # .decode('cp1251')
+                if _sender.walkie_talkie_runner and data == 'READY TO NEXT':
+                    _sender.walkie_talkie_runner = False
+                self.data_callback(data)
         return _socket
 
     def _socket_error(self, err, _sender):
         log.info('ERROR: {}'.format(err))
-        # STOP SENDER
         _sender.running = False
-        CommonQueue.CQ.put(False)
-        # SEND TO PARENT
-        self.system_callback({'ERROR': '{}'.format(err)})
+        self.system_callback({'ERROR: {}'.format(err)})
 
 
 class Sender(threading.Thread):
+    CYCLE = 0
+
     def __init__(self, sender_socket=None, data_callback=None, system_callback=None):
         log.info('start up')
         self.running = True
-        self.walkie_talkie = False
+        self.walkie_talkie_runner = False
         self.sender_socket = sender_socket
         self.data_callback = data_callback
         self.system_callback = system_callback
@@ -106,10 +102,9 @@ class Sender(threading.Thread):
         threading.Thread.__init__(self)
 
     def run(self):
-        log.info('SENDER running...')
         _delta_on = 0
         while self.running:
-            response = Sender.__get_from_queue()
+            response = Sender.__get_from_queue(self)
             if response:
                 # check data type
                 log.info('SEND: {}'.format(response))
@@ -117,33 +112,41 @@ class Sender(threading.Thread):
                     self.sender_socket.send(bytes(response, encoding='UTF-8'))
                 except Exception as err:
                     log.error('SENDER: {}'.format(err))
-                    # self.system_callback()
+                    self.system_callback({'ERROR: {}'.format(err)})
+                    self._back_up()
                 else:
-                    self.walkie_talkie = True
+                    self.walkie_talkie_runner = True
                     _delta_on = time.time()
-                    log.info('WALKIE-TALKIE: {}, _delta_on: {}'.format(self.walkie_talkie, _delta_on))
-            else:
-                log.info('SENDER: response = {}'.format(response))
-                # self.system_callback()
+                    log.info('WALKIE-TALKIE: {}, _delta_on: {}'.format(self.walkie_talkie_runner, _delta_on))
+            self.walkie_talkie(_delta_on)
 
-            while self.walkie_talkie:
-                sleep(0.05)
-                if time.time() - _delta_on > 3:
-                    # CALLBACK to write in local db
-                    log.debug('TIMEOUT !!!!!!!!!!!!')
-                    log.debug(time.time() - _delta_on)
-                    self.walkie_talkie = False
-            log.info('NEXT @@@@@')
+    def walkie_talkie(self, _delta_on):
+        while self.walkie_talkie_runner:
+            sleep(0.05)
+            if time.time() - _delta_on > 3:
+                self.system_callback('LOST CONNECTION WITH SERVER')
+                self._back_up()
+        Sender.CYCLE += 1
 
     @staticmethod
-    def __get_from_queue():
+    def __get_from_queue(self):
+        log.info('RUNNING... CYCLE: {}'.format(Sender.CYCLE))
+        while CommonQueue.CQ.empty() and self.running:
+            sleep(0.01)
         try:
-            data = CommonQueue.CQ.get()
+            data = CommonQueue.CQ.get(block=False)
         except Exception as err:
             log.error(err)
             return False
+        if data != 'SAVE':
+            return data
+        return False
 
-        return data
+    def _back_up(self):
+        self.walkie_talkie_runner = False
+        self.running = False
+        temp_queue = CommonQueue.CQ.put('SAVE', block=True)
+        pickle.dump(temp_queue, open('pyark_{}_.io'.format(time.time()), 'wb'), 2)
 
 
 def callback_data(response):
@@ -156,13 +159,14 @@ def callback_system(response):
 
 
 if __name__ == '__main__':
-    _client = Client(host='192.168.0', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
+    _client = Client(host='192.168.1', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
     _client.start()
 
     while True:
+        # sleep(15)
         for i in range(500):
             log.info('send to server: {}'.format(bytes('BREAK :) NUMBER: {}'.format(i), encoding='UTF-8')))
-            CommonQueue.CQ.put('BREAK :) NUMBER: {}'.format(i))
-            sleep(2)
+            CommonQueue.CQ.put('BREAK :) NUMBER: {}'.format(i), block=False)
+            sleep(1)
 
 
