@@ -1,15 +1,14 @@
 # -- coding: utf-8 --
 from __future__ import unicode_literals
 import threading
-# from queue import Queue
 from multiprocessing import Queue
 from drivers import get_socket
 from drivers.log_settings import log
-from drivers.interrupt import Interrupt
+from drivers import db
 from time import sleep
 import time
 import socket
-import pickle
+from datetime import datetime
 
 
 __author__ = "PyARKio"
@@ -22,19 +21,6 @@ class CommonQueue:
     CQ = Queue()
     SysCQ = Queue()
     SCQ = Queue()
-    BACK_UP_RUN = False
-
-    @staticmethod
-    def back_up_timer():
-        timer = Interrupt(callback_handler=CommonQueue.back_up, periodic=0.1)
-        timer.go_go()
-        return timer
-
-    @staticmethod
-    def back_up():
-        if CommonQueue.BACK_UP_RUN:
-            pickle.dump(CommonQueue.CQ, open('pyark_{}_.io'.format(time.time()), 'wb'))
-            CommonQueue.BACK_UP_RUN = False
 
 
 class Client(threading.Thread):
@@ -46,17 +32,42 @@ class Client(threading.Thread):
         self.data_callback = data_callback
         self.system_callback = system_callback
         self.running = True
+        self.db_conn = None
+        self.db_cursor = None
 
         threading.Thread.__init__(self)
 
+    def db_init(self):
+        # self.db_name = '{} {}'.format(self.battery_name, time.time())
+        log.info('DB name: PyARKio.io')
+
+        self.db_conn, self.db_cursor = db.init_db('PyARKio.io')
+        log.info('DB_conn: {};  DB_cursor: {}'.format(self.db_conn, self.db_cursor))
+
+        if self.db_conn and self.db_cursor:
+            log.info(db.select_all_table(self.db_cursor))
+            if not db.create_table_in_db(self.db_cursor):
+                log.info('Can not create table <data>')
+                log.info('SYSTEM STOP')
+                # sys.exit(0)
+            if not db.commit_changes(self.db_conn):
+                log.info('Can not commit')
+                log.info('SYSTEM STOP')
+                # sys.exit(0)
+        else:
+            log.info('Can not init db')
+            log.info('SYSTEM STOP')
+            # sys.exit(0)
+
     def run(self):
+        self.db_init()
         while self.running:
             _sender = None
             _socket = None
             log.info('host circle. _socket: {}'.format(_socket))
             while not _socket:
                 _socket = self._get_socket()
-            # check back-up files (mistake: two lines upper)
+            self._recover()
             if _socket:
                 _sender = self._run_sender(_socket)
             while _socket:
@@ -93,7 +104,7 @@ class Client(threading.Thread):
                 self._socket_error('No data', _sender)
             else:
                 # ADD related to key data from )_sender !!!!
-                if _sender.walkie_talkie_runner and data == 'READY TO NEXT':
+                if _sender.walkie_talkie_runner and data == 'READY TO NEXT\r\n':
                     _sender.walkie_talkie_runner = False
                 self.data_callback(data)
         return _socket
@@ -102,6 +113,17 @@ class Client(threading.Thread):
         log.info('ERROR: {}'.format(err))
         _sender.running = False
         self.system_callback({'ERROR: {}'.format(err)})
+
+    def _recover(self):
+        back_up_data = db.select_from_db(self.db_cursor, name_table_in_db='data')
+        log.info(back_up_data)
+        for data in back_up_data:
+            log.debug('PUT IN QUEUE {}'.format(data[3]))
+            CommonQueue.CQ.put(data[3], block=False)
+            db.delete_from_table_in_db(self.db_cursor, data[0])
+            db.commit_changes(self.db_conn)
+        back_up_data = db.select_from_db(self.db_cursor, name_table_in_db='data')
+        log.info(back_up_data)
 
 
 class Sender(threading.Thread):
@@ -114,15 +136,16 @@ class Sender(threading.Thread):
         self.sender_socket = sender_socket
         self.data_callback = data_callback
         self.system_callback = system_callback
+        self.db_conn = None
+        self.db_cursor = None
 
         threading.Thread.__init__(self)
 
-        # self.back_up_timer = CommonQueue.back_up_timer()
-
     def run(self):
+        self.db_conn, self.db_cursor = db.init_db('PyARKio.io')
         _delta_on = 0
         while self.running:
-            response = Sender.__get_from_queue(self)
+            response = Sender.__get_from_queue(self, wait=True)
             if response:
                 # check data type
                 log.info('SEND: {}'.format(response))
@@ -136,6 +159,9 @@ class Sender(threading.Thread):
                     self.walkie_talkie_runner = True
                     _delta_on = time.time()
                     log.info('WALKIE-TALKIE: {}, _delta_on: {}'.format(self.walkie_talkie_runner, _delta_on))
+            elif not self.running:
+                self.system_callback('SOMEBODY STOP SENDER')
+                self._back_up()
             self.walkie_talkie(_delta_on)
 
     def walkie_talkie(self, _delta_on):
@@ -147,10 +173,15 @@ class Sender(threading.Thread):
         Sender.CYCLE += 1
 
     @staticmethod
-    def __get_from_queue(self):
+    def while_empty(self):
         log.info('RUNNING... CYCLE: {}'.format(Sender.CYCLE))
         while CommonQueue.CQ.empty() and self.running:
             sleep(0.01)
+
+    @staticmethod
+    def __get_from_queue(self, wait=False):
+        if wait:
+            Sender.while_empty(self)
         try:
             data = CommonQueue.CQ.get(block=False)
         except Exception as err:
@@ -161,14 +192,14 @@ class Sender(threading.Thread):
         return False
 
     def _back_up(self):
+        log.info('BACK-UP running...')
         self.walkie_talkie_runner = False
         self.running = False
-        log.debug(CommonQueue.CQ.qsize())
-        # CommonQueue.BACK_UP_RUN = True
-        # self.back_up_timer.terminate()
-        pickle.dump(CommonQueue, open('pyark_{}_.io'.format(time.time()), 'wb'))
-        # response = pickle.dumps(CommonQueue)
-        # log.debug(response)
+        while not CommonQueue.CQ.empty():
+            data = Sender.__get_from_queue(self)
+            db.insert_into_db(self.db_cursor, time.time(), datetime.now(), data)
+            db.commit_changes(self.db_conn)
+        log.info('BACK-UP: ok')
 
 
 def callback_data(response):
@@ -185,7 +216,7 @@ if __name__ == '__main__':
     _client.start()
 
     while True:
-        # sleep(15)
+        sleep(15)
         for i in range(500):
             log.info('send to server: {}'.format(bytes('BREAK :) NUMBER: {}'.format(i), encoding='UTF-8')))
             CommonQueue.CQ.put('BREAK :) NUMBER: {}'.format(i), block=False)
