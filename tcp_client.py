@@ -43,6 +43,7 @@ class Client(threading.Thread):
                 _socket = self._get_socket()
             if _socket:
                 _sender = self._run_sender(_socket)
+            # check back-up files (mistake: two lines upper)
             while _socket:
                 _socket = self._get_data_from_server(_socket, _sender)
 
