@@ -1,9 +1,11 @@
 # -- coding: utf-8 --
 from __future__ import unicode_literals
 import threading
+# from queue import Queue
 from multiprocessing import Queue
 from drivers import get_socket
 from drivers.log_settings import log
+from drivers.interrupt import Interrupt
 from time import sleep
 import time
 import socket
@@ -20,6 +22,19 @@ class CommonQueue:
     CQ = Queue()
     SysCQ = Queue()
     SCQ = Queue()
+    BACK_UP_RUN = False
+
+    @staticmethod
+    def back_up_timer():
+        timer = Interrupt(callback_handler=CommonQueue.back_up, periodic=0.1)
+        timer.go_go()
+        return timer
+
+    @staticmethod
+    def back_up():
+        if CommonQueue.BACK_UP_RUN:
+            pickle.dump(CommonQueue.CQ, open('pyark_{}_.io'.format(time.time()), 'wb'))
+            CommonQueue.BACK_UP_RUN = False
 
 
 class Client(threading.Thread):
@@ -41,9 +56,9 @@ class Client(threading.Thread):
             log.info('host circle. _socket: {}'.format(_socket))
             while not _socket:
                 _socket = self._get_socket()
+            # check back-up files (mistake: two lines upper)
             if _socket:
                 _sender = self._run_sender(_socket)
-            # check back-up files (mistake: two lines upper)
             while _socket:
                 _socket = self._get_data_from_server(_socket, _sender)
 
@@ -102,6 +117,8 @@ class Sender(threading.Thread):
 
         threading.Thread.__init__(self)
 
+        # self.back_up_timer = CommonQueue.back_up_timer()
+
     def run(self):
         _delta_on = 0
         while self.running:
@@ -146,8 +163,12 @@ class Sender(threading.Thread):
     def _back_up(self):
         self.walkie_talkie_runner = False
         self.running = False
-        temp_queue = CommonQueue.CQ.put('SAVE', block=True)
-        pickle.dump(temp_queue, open('pyark_{}_.io'.format(time.time()), 'wb'), 2)
+        log.debug(CommonQueue.CQ.qsize())
+        # CommonQueue.BACK_UP_RUN = True
+        # self.back_up_timer.terminate()
+        pickle.dump(CommonQueue, open('pyark_{}_.io'.format(time.time()), 'wb'))
+        # response = pickle.dumps(CommonQueue)
+        # log.debug(response)
 
 
 def callback_data(response):
@@ -160,7 +181,7 @@ def callback_system(response):
 
 
 if __name__ == '__main__':
-    _client = Client(host='192.168.1', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
+    _client = Client(host='192.168.0', port=777, auto=True, data_callback=callback_data, system_callback=callback_system)
     _client.start()
 
     while True:
