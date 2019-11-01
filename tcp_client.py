@@ -77,7 +77,7 @@ class Client(threading.Thread):
         log.info('init search host')
         _socket = get_socket.search_host(pre_host=self.host, port=self.port, auto=self.auto)
         log.info(_socket)
-        self.system_callback(_socket)
+        # self.system_callback({'START': _socket})
 
         return _socket
 
@@ -112,7 +112,7 @@ class Client(threading.Thread):
     def _socket_error(self, err, _sender):
         log.info('ERROR: {}'.format(err))
         _sender.running = False
-        self.system_callback({'ERROR: {}'.format(err)})
+        self.system_callback({'ERROR': err})
 
     def _recover(self):
         back_up_data = db.select_from_db(self.db_cursor, name_table_in_db='data')
@@ -124,6 +124,7 @@ class Client(threading.Thread):
             db.commit_changes(self.db_conn)
         back_up_data = db.select_from_db(self.db_cursor, name_table_in_db='data')
         log.info(back_up_data)
+        self.system_callback({'START': 'RECOVER DONE'})
 
 
 class Sender(threading.Thread):
@@ -153,14 +154,14 @@ class Sender(threading.Thread):
                     self.sender_socket.send(bytes(response, encoding='UTF-8'))
                 except Exception as err:
                     log.error('SENDER: {}'.format(err))
-                    self.system_callback({'ERROR: {}'.format(err)})
+                    self.system_callback({'ERROR': err})
                     self._back_up()
                 else:
                     self.walkie_talkie_runner = True
                     _delta_on = time.time()
                     log.info('WALKIE-TALKIE: {}, _delta_on: {}'.format(self.walkie_talkie_runner, _delta_on))
             elif not self.running:
-                self.system_callback('SOMEBODY STOP SENDER')
+                self.system_callback({'ERROR': 'SOMEBODY STOP SENDER'})
                 self._back_up()
             self.walkie_talkie(_delta_on)
 
@@ -168,7 +169,7 @@ class Sender(threading.Thread):
         while self.walkie_talkie_runner:
             sleep(0.05)
             if time.time() - _delta_on > 3:
-                self.system_callback('LOST CONNECTION WITH SERVER')
+                self.system_callback({'ERROR': 'LOST CONNECTION WITH SERVER'})
                 self._back_up()
         Sender.CYCLE += 1
 
